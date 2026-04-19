@@ -4,6 +4,7 @@ const serverConfig = require('./config/server.config');
 const multer = require('multer');
 const connectDB = require('./mongodb/connect');
 const authRouter = require('./routes/auth.routes');
+const requestLogger = require('./middleware/request-logger.middleware');
 
 
 
@@ -41,6 +42,7 @@ app.use(helmetMiddleware);
 app.use(corsMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(requestLogger);
 
 // Sanitize data AFTER body parsing
 // app.use(mongoSanitize()); // <--- TẠM TẮT ĐỂ DEMO NOSQL INJECTION

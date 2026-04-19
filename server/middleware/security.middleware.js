@@ -30,7 +30,7 @@ const corsMiddleware = cors({
 // Rate Limiters
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 100, // 100 requests per window
+    max: 10, // 10 requests per window
     message: {
         success: false,
         error: 'Quá nhiều requests từ IP này, vui lòng thử lại sau 15 phút.'
