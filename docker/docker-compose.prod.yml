@@ -1,17 +1,12 @@
-version: '3.8'
-
 services:
-  # MongoDB Database
   mongodb:
     image: mongo:7.0
     container_name: plant_disease_mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_DATABASE: plant_disease_db
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-plant_disease_db}
     volumes:
       - mongodb_data:/data/db
-    ports:
-      - "27017:27017"
     networks:
       - plant_disease_network
     healthcheck:
@@ -21,32 +16,33 @@ services:
       retries: 5
       start_period: 10s
 
-  # Node.js API Server - Sử dụng pre-built image từ Docker Hub
   api-server:
-    # Pull image từ Docker Hub
-    image: baothanhbin/plant-disease-api:latest
-    # Nếu dùng file .tar thay vì Docker Hub, comment dòng trên và uncomment dòng dưới
-    # image: plant-disease-api:latest
+    image: plant-disease-api:latest
+    # Build this image on the EC2 host from the uploaded source:
+    # docker build -t plant-disease-api:latest -f docker/Dockerfile.server .
     container_name: plant_disease_api
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - PORT=3000
-      - HTTPS_PORT=3443
-      - USE_HTTPS=false
-      - MONGODB_URI=mongodb://mongodb:27017/plant_disease_db
-      - ALLOWED_ORIGINS=*
-      - TRUST_PROXY=false
+      - PORT=${PORT:-3000}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/plant_disease_db}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://app.example.com}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
       - JWT_SECRET=${JWT_SECRET}
-      - PUBLIC_IP=${PUBLIC_IP:-45.128.222.189}
+      - PUBLIC_IP=${PUBLIC_IP:-api.example.com}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASS=${EMAIL_PASS:-}
     volumes:
-      # Mount models và data để không cần rebuild khi thay đổi
       - ./runs:/app/runs:ro
       - ./server/uploads:/app/server/uploads
       - ./python/temp_uploads:/app/python/temp_uploads
     ports:
-      - "3000:3000"
-      - "3443:3443"
+      # Keep the app private to the host. Nginx on EC2 should proxy to this port.
+      - "127.0.0.1:3000:3000"
     depends_on:
       mongodb:
         condition: service_healthy

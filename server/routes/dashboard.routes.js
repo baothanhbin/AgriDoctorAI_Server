@@ -2,10 +2,10 @@ const express = require('express');
 
 const router = express.Router();
 
-router.get('/api/gemini-key', (req, res) => {
+router.use((req, res) => {
     return res.status(410).json({
         success: false,
-        error: 'Endpoint nay da bi vo hieu hoa. Gemini key khong duoc phep tra ve client.'
+        error: 'Dashboard public endpoint da bi vo hieu hoa.'
     });
 });
 

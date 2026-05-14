@@ -1,36 +1,36 @@
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_ISSUER = 'agridoctorai-api';
+const JWT_AUDIENCE = 'agridoctorai-mobile';
 
 if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined in environment variables. Please set JWT_SECRET in your .env file or environment.');
 }
 
 const verifyToken = (req, res, next) => {
-    // 1. Lấy token từ header
-    // Header thường có dạng: "Authorization: Bearer <token>"
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Lấy phần sau chữ Bearer
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({
             success: false,
-            message: "Access Denied. No token provided."
+            message: 'Access denied.'
         });
     }
 
     try {
-        // 2. Xác thực token
-        const verified = jwt.verify(token, JWT_SECRET);
+        const verified = jwt.verify(token, JWT_SECRET, {
+            issuer: JWT_ISSUER,
+            audience: JWT_AUDIENCE
+        });
 
-        // 3. Nếu đúng, lưu thông tin user vào req để dùng ở các bước sau
         req.user = verified;
-
-        next(); // Cho phép đi tiếp
-    } catch (err) {
+        next();
+    } catch (error) {
         return res.status(403).json({
             success: false,
-            message: "Invalid Token"
+            message: 'Invalid token.'
         });
     }
 };

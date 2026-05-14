@@ -17,10 +17,17 @@ ssl/key.pem
 ssl/*.key
 ssl/*.pem
 !ssl/cert.pem.example
+server/ssl/*.key
+server/ssl/*.pem
+!server/ssl/cert.pem.example
 
 # Uploads
 uploads/*
 !uploads/.gitkeep
+server/uploads/*
+!server/uploads/.gitkeep
+server/public/uploads/*
+!server/public/uploads/.gitkeep
 
 # Logs
 *.log
@@ -44,4 +51,3 @@ Thumbs.db
 # Cache
 *.cache
 .cache/
-

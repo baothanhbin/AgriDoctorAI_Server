@@ -1,16 +1,35 @@
-const SENSITIVE_KEYS = [
+const SENSITIVE_KEY_PATTERNS = [
     'password',
-    'currentPassword',
-    'newPassword',
-    'confirmPassword',
     'otp',
     'token',
+    'secret',
     'authorization',
-    'accessToken',
-    'refreshToken'
+    'cookie',
+    'email',
+    'phone',
+    'address',
+    'location',
+    'latitude',
+    'longitude',
+    'apikey',
+    'api_key',
+    'resettoken',
+    'refreshtoken',
+    'accesstoken'
 ];
 
 const MAX_STRING_LENGTH = 160;
+
+function normalizeKey(key) {
+    return String(key || '')
+        .replace(/[^a-z0-9]/gi, '')
+        .toLowerCase();
+}
+
+function isSensitiveKey(key) {
+    const normalizedKey = normalizeKey(key);
+    return SENSITIVE_KEY_PATTERNS.some(pattern => normalizedKey.includes(pattern));
+}
 
 function maskValue(value) {
     if (value == null) {
@@ -39,7 +58,7 @@ function sanitizePayload(payload) {
     if (typeof payload === 'object') {
         return Object.fromEntries(
             Object.entries(payload).map(([key, value]) => {
-                if (SENSITIVE_KEYS.includes(key)) {
+                if (isSensitiveKey(key)) {
                     return [key, maskValue(value)];
                 }
                 return [key, sanitizePayload(value)];
@@ -60,7 +79,8 @@ function buildHeaderSummary(req) {
         origin: req.get('origin') || '',
         userAgent: req.get('user-agent') || '',
         contentType: req.get('content-type') || '',
-        authorization: req.get('authorization') ? maskValue(req.get('authorization')) : ''
+        authorization: req.get('authorization') ? maskValue(req.get('authorization')) : '',
+        cookie: req.get('cookie') ? maskValue(req.get('cookie')) : ''
     };
 }
 

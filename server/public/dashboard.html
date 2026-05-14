@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriDoctorAI - Live Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #333;
+            --primary-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #ddd; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: var(--card-bg); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-5px); }
+        .card img { width: 100%; height: 250px; object-fit: cover; border-bottom: 1px solid #eee; }
+        .card-body { padding: 15px; }
+        .tag { display: inline-block; padding: 5px 10px; border-radius: 20px; font-size: 0.85em; font-weight: bold; margin-bottom: 10px; color: white; }
+        .tag.healthy { background-color: var(--primary-color); }
+        .tag.disease { background-color: var(--danger-color); }
+        .title { font-size: 1.1em; font-weight: bold; margin-bottom: 5px; }
+        .subtitle { font-size: 0.9em; color: #666; margin-bottom: 10px; }
+        .details { font-size: 0.85em; line-height: 1.5; }
+        .empty-state { text-align: center; padding: 50px; color: #7f8c8d; font-size: 1.2em; grid-column: 1 / -1; }
+        .timestamp { font-size: 0.8em; color: #999; margin-top: 10px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌱 AgriDoctorAI - Live Detection Dashboard</h1>
+        <div id="status">Trạng thái: <span style="color: var(--primary-color); font-weight: bold;">Đang cập nhật (Auto-refresh: 2s)</span></div>
+    </div>
+
+    <div class="grid" id="history-container">
+        <!-- Các thẻ kết quả sẽ được chèn vào đây -->
+        <div class="empty-state">Đang tải dữ liệu...</div>
+    </div>
+
+    <script>
+        async function fetchHistory() {
+            try {
+                const response = await fetch('/api/dashboard/history');
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    renderHistory(result.data);
+                }
+            } catch (error) {
+                console.error("Lỗi khi tải lịch sử:", error);
+            }
+        }
+
+        function renderHistory(history) {
+            const container = document.getElementById('history-container');
+            console.log("Rendering history:", history);
+            
+            if (!history || history.length === 0) {
+                container.innerHTML = '<div class="empty-state">Chưa có dữ liệu phân tích nào. Hãy gửi ảnh từ Mobile App!</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            
+            // Lặp mảng ngược lại để hiển thị mới nhất lên đầu
+            [...history].reverse().forEach(item => {
+                const diseaseNameStr = item.diseaseName || '';
+                const isHealthy = diseaseNameStr.includes("Không phát hiện bệnh") || diseaseNameStr.includes("Khỏe mạnh");
+                const tagClass = isHealthy ? 'healthy' : 'disease';
+                const tagText = isHealthy ? 'Khỏe mạnh' : 'Phát hiện bệnh';
+                
+                const rawSymptoms = item.symptoms;
+                const symptomsStr = Array.isArray(rawSymptoms) ? rawSymptoms.join(', ') : (rawSymptoms || 'Chưa có thông tin triệu chứng.');
+                const plantNameVNStr = item.plantNameVN || 'Không xác định';
+                const plantNameStr = item.plantName || 'Unknown';
+                
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <img src="${item.imageUrl || ''}" alt="Plant Image" onerror="this.src='https://via.placeholder.com/300x250?text=Image+Not+Found'">
+                    <div class="card-body">
+                        <span class="tag ${tagClass}">${tagText}</span>
+                        <div class="title">${plantNameVNStr} (${plantNameStr})</div>
+                        <div class="subtitle"><strong>Bệnh:</strong> ${diseaseNameStr}</div>
+                        <div class="details">
+                            ${symptomsStr.substring(0, 100)}${symptomsStr.length > 100 ? '...' : ''}
+                        </div>
+                        <div class="timestamp">${item.timestamp ? new Date(item.timestamp).toLocaleString('vi-VN') : ''}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Tải ngay khi mở trang
+        fetchHistory();
+        
+        // Cập nhật mỗi 2 giây
+        setInterval(fetchHistory, 2000);
+    </script>
+</body>
+</html>

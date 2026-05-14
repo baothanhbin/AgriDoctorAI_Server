@@ -84,7 +84,9 @@ def run_inference(image_path):
             result_data["debug_info"].append("Using general model")
             
         if not os.path.exists(det_model_path):
-             return {"success": False, "error": f"Detection model not found at {det_model_path}"}
+             result_data["debug_info"].append(f"Detection model not found at {det_model_path}")
+             result_data["unsupported"] = True
+             return result_data
 
         det_model = YOLO(det_model_path)
         
@@ -116,6 +118,10 @@ def run_inference(image_path):
             # Trường hợp 2: Trùng tên hoàn toàn
             elif name.lower() == valid_prefix.lower():
                 is_match = True
+                
+            # Loại bỏ nếu là nhãn "Khỏe mạnh" (không phải là bệnh)
+            if "khoe" in name.lower() or "healthy" in name.lower():
+                is_match = False
             
             # Nếu dùng specialized model, ta có thể tin tưởng hơn, nhưng vẫn nên lọc để tránh nhiễu
             if is_match:
@@ -150,7 +156,7 @@ def main():
     # In kết quả JSON để Node.js đọc
     print(json.dumps(result, ensure_ascii=False))
     
-    sys.exit(0 if result.get("success", False) else 1)
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

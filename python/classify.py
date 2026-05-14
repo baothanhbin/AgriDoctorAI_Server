@@ -111,7 +111,7 @@ def main():
     # In kết quả JSON để Node.js đọc
     print(json.dumps(result, ensure_ascii=False))
     
-    sys.exit(0 if result.get("success", False) else 1)
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

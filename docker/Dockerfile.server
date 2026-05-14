@@ -1,51 +1,49 @@
-# Dockerfile cho Node.js API Server
-FROM node:18-slim
+FROM node:20-slim
 
-# Thiết lập thư mục làm việc
 WORKDIR /app
 
-# Cài đặt Python và các dependencies cần thiết cho việc chạy Python scripts
+# Install Python runtime for the inference scripts.
 RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0 \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip để có các tính năng mới nhất và fix timeout issues
 RUN pip3 install --upgrade pip --break-system-packages
 
-# Copy package.json và package-lock.json
 COPY server/package*.json ./server/
 
-# Cài đặt Node.js dependencies
 WORKDIR /app/server
 RUN npm ci --only=production
 
-# Copy toàn bộ code vào container
 WORKDIR /app
 COPY . .
 
-# Cài đặt Python dependencies cho scripts
-# Sử dụng timeout tăng lên và retry để tránh lỗi timeout
+# This EC2 host is CPU-only, so install CPU wheels for torch/torchvision
+# instead of much larger CUDA builds that exhaust disk space.
 COPY python/requirements.txt python/requirements.txt
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN grep -vE '^(torch|torchvision)([<>=].*)?$' python/requirements.txt > /tmp/requirements-no-torch.txt && \
+    pip3 install --no-cache-dir --break-system-packages \
     --default-timeout=300 \
     --retries=5 \
-    -r python/requirements.txt || \
-    pip3 install --no-cache-dir --break-system-packages \
-    --default-timeout=600 \
-    --retries=10 \
-    -r python/requirements.txt
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch torchvision && \
+    (pip3 install --no-cache-dir --break-system-packages \
+        --default-timeout=300 \
+        --retries=5 \
+        -r /tmp/requirements-no-torch.txt || \
+     pip3 install --no-cache-dir --break-system-packages \
+        --default-timeout=600 \
+        --retries=10 \
+        -r /tmp/requirements-no-torch.txt)
 
-# Tạo thư mục uploads và temp_uploads
 RUN mkdir -p server/uploads python/temp_uploads/cropped
 
-# Expose ports
 EXPOSE 3000 3443
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
-# Chạy server
 WORKDIR /app/server
 CMD ["node", "server.js"]

@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # MongoDB Database
   mongodb:
     image: mongo:7.0
     container_name: plant_disease_mongodb
@@ -10,10 +9,9 @@ services:
       MONGO_INITDB_DATABASE: plant_disease_db
     volumes:
       - mongodb_data:/data/db
-      # Mount init scripts nếu cần
       - ./server/mongodb/init:/docker-entrypoint-initdb.d:ro
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     networks:
       - plant_disease_network
     healthcheck:
@@ -23,8 +21,8 @@ services:
       retries: 5
       start_period: 10s
 
-  # Node.js API Server
   api-server:
+    image: plant-disease-api:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.server
@@ -36,17 +34,16 @@ services:
       - HTTPS_PORT=3443
       - USE_HTTPS=false
       - MONGODB_URI=mongodb://mongodb:27017/plant_disease_db
-      - ALLOWED_ORIGINS=*
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080
       - TRUST_PROXY=false
       - JWT_SECRET=${JWT_SECRET}
       - PUBLIC_IP=${PUBLIC_IP:-}
     volumes:
-      # Mount models và data để không cần rebuild khi thay đổi
       - ./runs:/app/runs:ro
       - ./server/uploads:/app/server/uploads
+      - ./server/public/uploads:/app/server/public/uploads
       - ./python/temp_uploads:/app/python/temp_uploads
-      # Mount code để không cần rebuild khi sửa code (chỉ cho development)
-      # Uncomment dòng dưới để mount code (sẽ không cần rebuild khi sửa code)
+      # Uncomment this for live code mounting during local development.
       # - ./server:/app/server:ro
     ports:
       - "3000:3000"

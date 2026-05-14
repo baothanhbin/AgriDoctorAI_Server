@@ -12,7 +12,8 @@ const UserSchema = new mongoose.Schema({
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     failedOtpAttempts: { type: Number, default: 0 },
-    forgotPasswordVerifiedUntil: { type: Date, default: null }
+    forgotPasswordVerifiedUntil: { type: Date, default: null },
+    passwordResetNonce: { type: String, default: null }
 }, {
     timestamps: true
 });

@@ -1,84 +1,154 @@
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
+const serverConfig = require('../config/server.config');
 
-// Hàm chạy model Python - Classification (chỉ nhận diện cây)
-function runClassify(imagePath) {
+let activeInferenceJobs = 0;
+const pendingInferenceJobs = [];
+
+function createQueueFullError() {
+    const error = new Error('Inference queue is full');
+    error.code = 'INFERENCE_QUEUE_FULL';
+    return error;
+}
+
+function drainInferenceQueue() {
+    if (activeInferenceJobs >= serverConfig.MAX_CONCURRENT_INFERENCE) {
+        return;
+    }
+
+    const nextJob = pendingInferenceJobs.shift();
+    if (nextJob) {
+        nextJob();
+    }
+}
+
+function enqueueInferenceTask(task) {
     return new Promise((resolve, reject) => {
-        // Đường dẫn từ server/ đến python/classify.py
-        const pythonScript = path.join(__dirname, '..', '..', 'python', 'classify.py');
-        // Sử dụng python3 cho Linux/Docker, python cho Windows
+        const startTask = () => {
+            activeInferenceJobs += 1;
+            Promise.resolve()
+                .then(task)
+                .then(resolve)
+                .catch(reject)
+                .finally(() => {
+                    activeInferenceJobs = Math.max(0, activeInferenceJobs - 1);
+                    drainInferenceQueue();
+                });
+        };
+
+        if (activeInferenceJobs < serverConfig.MAX_CONCURRENT_INFERENCE) {
+            startTask();
+            return;
+        }
+
+        if (pendingInferenceJobs.length >= serverConfig.MAX_PENDING_INFERENCE) {
+            reject(createQueueFullError());
+            return;
+        }
+
+        pendingInferenceJobs.push(startTask);
+    });
+}
+
+function runPythonScript(pythonScript, imagePath) {
+    return new Promise((resolve, reject) => {
         const pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-        const command = `${pythonExecutable} "${pythonScript}" "${imagePath}"`;
+        const child = spawn(pythonExecutable, [pythonScript, imagePath], {
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
 
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error('Lỗi chạy classification:', error);
-                return reject(error);
+        let stdout = '';
+        let stderr = '';
+        let didTimeout = false;
+        const timeout = setTimeout(() => {
+            didTimeout = true;
+            child.kill('SIGKILL');
+        }, 120_000);
+
+        child.stdout.on('data', chunk => {
+            stdout += chunk.toString();
+        });
+
+        child.stderr.on('data', chunk => {
+            stderr += chunk.toString();
+        });
+
+        child.on('error', error => {
+            clearTimeout(timeout);
+            reject(error);
+        });
+
+        child.on('close', code => {
+            clearTimeout(timeout);
+
+            if (stderr) {
+                console.log('Python STDERR:', stderr);
             }
 
-            try {
-                const result = JSON.parse(stdout);
-                resolve(result);
-            } catch (parseError) {
-                console.error('Lỗi parse JSON:', parseError);
-                console.error('Output:', stdout);
-                reject(parseError);
+            if (didTimeout) {
+                return reject(new Error('Python inference timed out'));
             }
+
+            if (code !== 0) {
+                return reject(new Error(`Python process exited with code ${code}`));
+            }
+
+            return resolve(stdout);
         });
     });
 }
 
-// Hàm chạy model Python - Detection (nhận diện cây + chuẩn đoán bệnh)
-function runModel(imagePath) {
-    return new Promise((resolve, reject) => {
-        // 1. Tự động detect Python executable: python3 cho Linux/Docker, python cho Windows
-        const pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
+function runClassify(imagePath) {
+    return enqueueInferenceTask(() => new Promise((resolve, reject) => {
+        const pythonScript = path.join(__dirname, '..', '..', 'python', 'classify.py');
 
+        runPythonScript(pythonScript, imagePath)
+            .then(stdout => {
+                try {
+                    resolve(JSON.parse(stdout));
+                } catch (parseError) {
+                    console.error('Loi parse JSON:', parseError);
+                    console.error('Output:', stdout);
+                    reject(parseError);
+                }
+            })
+            .catch(error => {
+                console.error('Loi chay classification:', error);
+                reject(error);
+            });
+    }));
+}
+
+function runModel(imagePath) {
+    return enqueueInferenceTask(() => new Promise((resolve, reject) => {
         const pythonScript = path.join(__dirname, '..', '..', 'python', 'inference.py');
 
-        // 2. Log ra câu lệnh để kiểm tra xem đường dẫn ghép đúng chưa
-        const command = `"${pythonExecutable}" "${pythonScript}" "${imagePath}"`;
-        console.log("▶️ Đang chạy lệnh:", command);
+        runPythonScript(pythonScript, imagePath)
+            .then(stdout => {
+                try {
+                    const jsonStartIndex = stdout.indexOf('{');
+                    const jsonEndIndex = stdout.lastIndexOf('}');
 
-        exec(command, (error, stdout, stderr) => {
-            // 3. Log toàn bộ kết quả trả về để soi lỗi
-            if (stderr) {
-                console.log('⚠️ Python Log/Warning (STDERR):', stderr);
-                // Lưu ý: YOLO hay in info ra stderr, nên có stderr chưa chắc đã là lỗi chết chương trình.
-            }
+                    if (jsonStartIndex === -1 || jsonEndIndex === -1) {
+                        throw new Error('Khong tim thay JSON trong output cua Python');
+                    }
 
-            if (error) {
-                console.error('❌ Lỗi thực thi (EXEC ERROR):', error.message);
-                return reject(error);
-            }
-
-            console.log('✅ Python Output (STDOUT):', stdout);
-
-            try {
-                // 4. Tìm JSON trong đống hỗn độn (nếu output bị bẩn)
-                // Mẹo: Tìm ký tự { đầu tiên và } cuối cùng
-                const jsonStartIndex = stdout.indexOf('{');
-                const jsonEndIndex = stdout.lastIndexOf('}');
-
-                if (jsonStartIndex === -1 || jsonEndIndex === -1) {
-                    throw new Error("Không tìm thấy JSON trong output của Python");
+                    const cleanJson = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
+                    resolve(JSON.parse(cleanJson));
+                } catch (parseError) {
+                    console.error('Loi parse JSON:', parseError);
+                    console.error('Output:', stdout);
+                    reject(parseError);
                 }
-
-                const cleanJson = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
-                const result = JSON.parse(cleanJson);
-
-                resolve(result);
-            } catch (parseError) {
-                console.error('❌ Lỗi Parse JSON:', parseError);
-                console.error('🔍 Output gốc nhận được là:', stdout);
-                reject(parseError);
-            }
-        });
-    });
+            })
+            .catch(error => {
+                console.error('Loi thuc thi model:', error);
+                reject(error);
+            });
+    }));
 }
 
 module.exports = {
     runClassify,
     runModel
 };
-
